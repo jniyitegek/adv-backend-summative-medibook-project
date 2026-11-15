@@ -1,0 +1,40 @@
+erDiagram
+    PATIENTS ||--o{ APPOINTMENTS : books
+    DOCTORS ||--o{ APPOINTMENTS : "is booked in"
+    APPOINTMENTS ||--o| REFUNDS : "may have"
+
+    PATIENTS {
+        int patient_id PK "AUTO_INCREMENT"
+        varchar full_name "NOT NULL"
+        varchar email UK "NOT NULL, UNIQUE"
+        varchar phone "NOT NULL"
+        datetime created_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    DOCTORS {
+        int doctor_id PK "AUTO_INCREMENT"
+        varchar full_name "NOT NULL"
+        varchar specialty "NOT NULL"
+        decimal consultation_fee "NOT NULL, DECIMAL(10,2), CHECK fee > 0"
+        varchar room "NOT NULL"
+    }
+
+    APPOINTMENTS {
+        int appointment_id PK "AUTO_INCREMENT"
+        int patient_id FK "NOT NULL, ON DELETE RESTRICT"
+        int doctor_id FK "NOT NULL, ON DELETE RESTRICT"
+        datetime appointment_datetime "NOT NULL"
+        enum status "NOT NULL, booked or cancelled, DEFAULT booked"
+        decimal amount_paid "NOT NULL, DECIMAL(10,2), CHECK >= 0, fee copied at booking"
+        datetime booked_on "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
+        datetime cancelled_at "NULL until cancelled"
+        datetime active_slot UK "GENERATED STORED: IF status=booked THEN appointment_datetime ELSE NULL. UNIQUE(doctor_id, active_slot)"
+    }
+
+    REFUNDS {
+        int refund_id PK "AUTO_INCREMENT"
+        int appointment_id FK "NOT NULL, UNIQUE, ON DELETE RESTRICT, one refund per appointment"
+        tinyint refund_percent "NOT NULL, CHECK IN (0, 50, 100)"
+        decimal refund_amount "NOT NULL, DECIMAL(10,2), CHECK >= 0"
+        datetime created_at "NOT NULL, DEFAULT CURRENT_TIMESTAMP"
+    }
