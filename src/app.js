@@ -1,5 +1,6 @@
 const express = require('express');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
+const patientRoutes = require('./routes/patientRoutes');
 
 const app = express();
 
@@ -16,7 +17,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes will be mounted here in subsequent stages
+// Mount routes
+app.use('/api/patients', patientRoutes);
 
 // 404 Fallback
 app.use(notFoundHandler);
