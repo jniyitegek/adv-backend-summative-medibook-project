@@ -3,5 +3,6 @@ const router = express.Router();
 const appointmentController = require('../controllers/appointmentController');
 
 router.post('/', appointmentController.bookAppointment);
+router.delete('/:id', appointmentController.cancelAppointment);
 
 module.exports = router;

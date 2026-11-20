@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { DAILY_CAP } = require('../config/constants');
 const { AppError } = require('../middleware/errorHandler');
+const { calculateRefund } = require('../services/refundCalculator');
 
 /**
  * Appointment Model
@@ -93,6 +94,67 @@ async function createBooking({ patientId, doctorId, datetime }) {
   }
 }
 
+/**
+ * Cancels an appointment in a single ACID transaction:
+ * - Locks appointment row
+ * - Calculates refund via pure service
+ * - Updates status to 'cancelled' (active_slot becomes NULL, freeing the slot)
+ * - Inserts refund record into refunds table
+ */
+async function cancelAppointment(appointmentId, now) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      'SELECT appointment_id, patient_id, doctor_id, appointment_datetime, status, amount_paid FROM appointments WHERE appointment_id = ? FOR UPDATE',
+      [appointmentId]
+    );
+
+    if (rows.length === 0) {
+      throw new AppError(404, `Appointment with ID ${appointmentId} not found`);
+    }
+
+    const appointment = rows[0];
+
+    if (appointment.status === 'cancelled') {
+      throw new AppError(409, `Appointment with ID ${appointmentId} is already cancelled`);
+    }
+
+    const { percent: refundPercent, amount: refundAmount } = calculateRefund(
+      appointment.appointment_datetime,
+      now,
+      appointment.amount_paid
+    );
+
+    await connection.query(
+      'UPDATE appointments SET status = ?, cancelled_at = ? WHERE appointment_id = ?',
+      ['cancelled', now, appointmentId]
+    );
+
+    await connection.query(
+      'INSERT INTO refunds (appointment_id, refund_percent, refund_amount, created_at) VALUES (?, ?, ?, ?)',
+      [appointmentId, refundPercent, refundAmount, now]
+    );
+
+    await connection.commit();
+
+    return {
+      appointmentId: Number(appointmentId),
+      doctorId: appointment.doctor_id,
+      patientId: appointment.patient_id,
+      datetime: appointment.appointment_datetime,
+      refundPercent,
+      refundAmount
+    };
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
 async function getAppointmentById(appointmentId) {
   const [rows] = await pool.query(
     'SELECT appointment_id, patient_id, doctor_id, appointment_datetime, status, amount_paid, booked_on, cancelled_at FROM appointments WHERE appointment_id = ?',
@@ -103,5 +165,6 @@ async function getAppointmentById(appointmentId) {
 
 module.exports = {
   createBooking,
+  cancelAppointment,
   getAppointmentById
 };

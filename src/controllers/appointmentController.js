@@ -26,7 +26,7 @@ async function bookAppointment(req, res, next) {
     );
 
     // Validate slot rules (hours, 30-min alignment, future only)
-    const now = new Date().toISOString();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const slotValidation = validateSlot(datetime, now);
 
     if (!slotValidation.valid) {
@@ -51,6 +51,28 @@ async function bookAppointment(req, res, next) {
   }
 }
 
+/**
+ * DELETE /api/appointments/:id - Cancel an appointment and calculate refund
+ */
+async function cancelAppointment(req, res, next) {
+  try {
+    const appointmentId = validatePositiveIntegerId(req.params.id, 'Appointment ID');
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    const result = await appointmentModel.cancelAppointment(appointmentId, now);
+
+    res.status(200).json({
+      message: 'Appointment cancelled successfully',
+      appointmentId: result.appointmentId,
+      refundPercent: result.refundPercent,
+      refundAmount: result.refundAmount
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
-  bookAppointment
+  bookAppointment,
+  cancelAppointment
 };
