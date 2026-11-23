@@ -1,0 +1,11 @@
+{
+  "title": "Ibitekerezo ku Masomo ya MediBook",
+  "instructions": "Nyamuneka sangiza ibitekerezo byawe bitabogamye ku bunararibonye bwo kwiga muri iri somo. Subiza ibibazo byose uko ari bitanu mu myanya yabugenewe hano hasi.",
+  "dateLabel": "Itariki y'Uyu Munsi",
+  "q1": "1. Ni iyihe ngingo muri iri somo yagusabye imbaraga nyinshi cyane, kandi kubera iki?",
+  "q2": "2. Sobanura igitekerezo kimwe wumvise neza nyuma y'imyitozo ngiro. Ni iki cyagufashije kucyumva neza?",
+  "q3": "3. Uburyo bwawe bwo gutegura ububikoshingiro cyangwa za API bwahindutse gute kuva iki gihembwe cyatangira?",
+  "q4": "4. Ni iki wanonosora ku buryo iri somo ryigishijwemo cyangwa ryasuzumwemo?",
+  "q5": "5. Uteganya gute gushyira mu bikorwa ibyo wize muri iri somo mu gihe kizaza?",
+  "submit": "Ohereza Ibitekerezo"
+}
