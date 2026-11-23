@@ -1,7 +1,7 @@
 /**
  * Application Constants
- * Consolidates business rules, operational limits, and settings
- * to eliminate magic numbers throughout the codebase.
+ * Consolidates business rules, operational limits, status values,
+ * and configuration constants to eliminate magic numbers and strings.
  */
 
 module.exports = {
@@ -20,6 +20,12 @@ module.exports = {
 
   // Doctor upcoming stats lookahead in days
   STATS_DAYS: 7,
+
+  // Appointment status values
+  APPOINTMENT_STATUS: {
+    BOOKED: 'booked',
+    CANCELLED: 'cancelled'
+  },
 
   // Refund policy tiers (evaluated in hours before appointment)
   REFUND_TIERS: {

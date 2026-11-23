@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const { DAILY_CAP } = require('../config/constants');
+const { DAILY_CAP, APPOINTMENT_STATUS } = require('../config/constants');
 const { AppError } = require('../middleware/errorHandler');
 const { calculateRefund } = require('../services/refundCalculator');
 
@@ -40,7 +40,7 @@ async function createBooking({ patientId, doctorId, datetime }) {
     const targetDate = datetime.substring(0, 10);
     const [countRows] = await connection.query(
       'SELECT COUNT(*) AS count FROM appointments WHERE doctor_id = ? AND DATE(appointment_datetime) = ? AND status = ?',
-      [doctorId, targetDate, 'booked']
+      [doctorId, targetDate, APPOINTMENT_STATUS.BOOKED]
     );
 
     const bookedCount = countRows[0].count;
@@ -59,7 +59,7 @@ async function createBooking({ patientId, doctorId, datetime }) {
     // 4. Insert appointment copying the doctor's current consultation fee
     const [insertResult] = await connection.query(
       'INSERT INTO appointments (patient_id, doctor_id, appointment_datetime, status, amount_paid) VALUES (?, ?, ?, ?, ?)',
-      [patientId, doctorId, datetime, 'booked', doctor.consultation_fee]
+      [patientId, doctorId, datetime, APPOINTMENT_STATUS.BOOKED, doctor.consultation_fee]
     );
 
     const [newApptRows] = await connection.query(
@@ -117,7 +117,7 @@ async function cancelAppointment(appointmentId, now) {
 
     const appointment = rows[0];
 
-    if (appointment.status === 'cancelled') {
+    if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
       throw new AppError(409, `Appointment with ID ${appointmentId} is already cancelled`);
     }
 
@@ -129,7 +129,7 @@ async function cancelAppointment(appointmentId, now) {
 
     await connection.query(
       'UPDATE appointments SET status = ?, cancelled_at = ? WHERE appointment_id = ?',
-      ['cancelled', now, appointmentId]
+      [APPOINTMENT_STATUS.CANCELLED, now, appointmentId]
     );
 
     await connection.query(
