@@ -1,130 +1,181 @@
-# Final Assessment — Backend Development
+# MediBook — Clinic Appointment System Backend
 
-**Weight:** 30% of final grade
-**Duration:** 2 weeks
-**Mode:** Individual project
-**Stack (mandatory):** Node.js, Express.js, MySQL (with parameterized queries only), Redis
+A production-ready clinic appointment booking backend engineered with **Node.js**, **Express.js**, **MySQL 8.0+** (parameterized queries only, no ORM), and **Redis** (native list queues).
 
 ---
 
-## Scenario — "MediBook" Clinic Appointment System
+## 1. Prerequisites
 
-A community clinic wants a backend service for booking doctor appointments. Doctors see patients in fixed 30-minute slots during working hours (09:00–17:00), each doctor can handle at most **12 appointments per day**, and the clinic administrator needs reports. You will design the database, build the API, and handle the operational concerns (background jobs, logging, testing).
-
-**Entity limit:** Your database must contain **exactly 3 entities**:
-
-| Entity | Purpose |
-|---|---|
-| `patients` | People who book appointments |
-| `doctors` | Doctors with a specialty, consultation fee, and room |
-| `appointments` | A patient's booking with a doctor at a specific date/time (links the other two) |
-
-You may add columns as needed, but no additional tables (lookup/locale JSON files don't count).
+- **Node.js**: v20.0.0 or higher (required for built-in full ICU international date formatting)
+- **MySQL**: 8.0.16 or higher (required for `CHECK` constraints and stored generated columns)
+- **Redis**: 6.2 or higher (required for atomic `LMOVE` command)
+- **Docker & Docker Compose** (recommended for running MySQL and Redis)
 
 ---
 
-## Part A — Database Design & Normalization
+## 2. Infrastructure Setup (Docker)
 
-The clinic currently tracks everything in this single spreadsheet:
+Spin up MySQL 8.0 and Redis 7 containers:
 
-| appt_ref | patient_name | patient_email | patient_phone | doctor_name | specialty | consultation_fee | room | appt_datetime | amount_paid | booked_on |
-|---|---|---|---|---|---|---|---|---|---|---|
-| AP-001 | Ama Mensah | ama@mail.com | 0244-111-222 | Dr. Boateng | Dermatology | 150.00 | R-12 | 2026-08-10 09:00 | 150.00 | 2026-07-01 |
-| AP-002 | Kojo Owusu | kojo@mail.com | 0555-333-444 | Dr. Boateng | Dermatology | 150.00 | R-12 | 2026-08-10 09:30 | 120.00 | 2026-07-02 |
-| AP-003 | Ama Mensah | ama@mail.com | 0244-111-222 | Dr. Adjei | Paediatrics | 100.00 | R-03 | 2026-08-15 10:00 | 100.00 | 2026-07-03 |
+```bash
+# Start MySQL container
+docker run -d --name medibook-mysql -e MYSQL_ROOT_PASSWORD=changeme -p 3306:3306 mysql:8.0
 
-Study the spreadsheet, then produce a **database schema diagram** of your design in fully normalized form (up to 3NF). The diagram must show **everything**:
-
-- all 3 entities with every column and its MySQL data type,
-- primary keys and foreign keys, clearly marked,
-- the relationships between the entities and their cardinality (1:N, etc.),
-- every constraint that enforces a business rule (`NOT NULL`, `UNIQUE`, `CHECK`) — in particular, it must be visible from the diagram that *a doctor cannot have two appointments at the same date/time*.
-
-Use any tool you like (dbdiagram.io, draw.io) and include it in your repository as `schema-diagram` (image or PDF).
-
-## Part B — Database Implementation & Project Setup
-
-1. **Table creation.** Translate your Part A diagram into a MySQL DDL script, `database/schema.sql`, that creates the database and the 3 tables — data types, primary keys, foreign keys, and every constraint shown on the diagram. The script must run cleanly on a fresh MySQL server. Also provide `database/seed.sql` with realistic sample data: at least 3 patients, 3 doctors (including one with no appointments), and 8 appointments (including one doctor-day at or near the 12-slot daily cap).
-
-2. **Project structure.** Set up the Express project in a **models / controllers / routes** structure:
-
-```
-├── database/          schema.sql and seed.sql (Part B.1)
-└── src/
-    ├── models/        all application SQL lives here — nowhere else
-    ├── controllers/   business logic; calls model functions, never the DB directly
-    └── routes/        maps URLs and HTTP methods to controllers
+# Start Redis container
+docker run -d --name medibook-redis -p 6379:6379 redis:7
 ```
 
-Every SQL statement in the application must use **parameterized queries** (`?` placeholders via `mysql2`). SQL found in a controller or route file loses marks. **Do not use any ORM for this assignment.**
-
-## Part C — Controllers & Endpoints
-
-Implement endpoints for the operations below. **Designing the API is part of the assessment**: you choose the URL paths, the HTTP methods, and how the endpoints are grouped into controllers and routes — your choices should follow REST conventions and will be marked. The business rules listed are **requirements** — *how* you satisfy them is your design decision, and you will be asked to defend it at the viva.
-
-1. **Basic CRUD** — standard **C**reate, **R**ead (one and all), **U**pdate, and **D**elete operations for patients and for doctors, with sensible validation. (Appointments get their create/delete behaviour from the two operations below — no separate CRUD needed there.)
-
-2. **Book an appointment**. Rules that must always hold:
-   - Appointments can only be booked in the future, within working hours (09:00–17:00), on a 30-minute slot boundary.
-   - A doctor never exceeds 12 appointments in a day.
-   - Two patients can never hold the same doctor slot — even when both requests arrive at the same instant.
-
-3. **Cancel an appointment**. Rules:
-   - The refund is computed by the server from the notice given: more than 48 hours → 100%; 24–48 hours → 50%; less than 24 hours → 0%. The response states the refund amount.
-   - The cancellation and its refund record succeed or fail together.
-   - A cancelled slot becomes bookable by another patient, while the cancellation record is kept for refund history.
-   - A cancellation notifies the waitlist (Part E).
-
-4. **Doctor statistics** — for a given doctor: revenue collected, upcoming appointment count, appointments per day for the next 7 days, and utilization % against the 12-slot daily cap.
-
-Operations 5 and 6 are where your **advanced SQL** is assessed: the results must be produced by the SQL in your models (joins, aggregates, etc) — not fetched raw and computed in JavaScript.
-
-5. **Doctors report** — every doctor's total appointments and revenue collected, including doctors with zero appointments.
-6. **Busy days report** — every (doctor, date) where more than 80% of the 12-slot daily capacity is booked.
-
-### General requirements (all endpoints)
-
-Input validation with meaningful `400` messages; correct status codes (`201`, `404`, `409`, `422`); a central error-handling middleware.
-
-## Part D — Node.js `fs` Module
-
-**Audit log:** every successful booking and cancellation must be appended as a JSON line to `logs/audit.log` using the `fs` module (async, non-blocking — no `*Sync` calls inside request handlers). The logger must create the `logs/` directory on first run if it doesn't exist, and a logging failure must **not** fail the user's request.
-
-## Part E — Queues & Redis
-
-1. **Waitlist queue:** when the requested slot (or the doctor's whole day) is fully booked, offer the patient a waitlist spot — push them onto a queue (Redis list, or Bull/BullMQ). When a cancellation frees a slot, a **worker process** (separate from the web server) pops the first waitlisted patient and books them in. Think through: what happens if the promoted booking itself fails? The patient must not simply vanish from both the queue and the appointments table.
-2. **Notification jobs:** every confirmed appointment enqueues a "confirmation SMS/email" job; the worker processes it by writing the message to the audit log (no real sending needed).
-
-## Part F — Unit Testing
-
-Using Jest, write **at least 6 meaningful unit tests**:
-
-- The refund calculator from Part C.3 — cover all three tiers **and both boundaries** (exactly 24 hours, exactly 48 hours). Boundary behaviour must match your documented policy.
-- One validation function of your choice — e.g., the slot-alignment/working-hours check — including at least one edge case (17:00 exactly? 09:15? a malformed date?).
-
-Tests must not require a live MySQL or Redis connection — that's the point of extracting pure functions. `npm test` must run them.
-
-## Part G — i18n & l10n: Course Feedback Page
-
-Create a **simple HTML page** (served by your Express app at `GET /feedback`) containing a short course-feedback form with **exactly 5 essay questions** (each answered in a `<textarea>`):
-
-1. Which topic in this course did you find most challenging, and why?
-2. Describe one concept you understood only after the practical assignments. What made it click?
-3. How has your approach to designing databases or APIs changed since the start of the trimester?
-4. What would you improve about how this course was taught or assessed?
-5. How do you plan to apply what you learned in this course going forward?
-
-**i18n/l10n requirement (keep it simple):** the page title, instructions, and all 5 questions must be loaded from locale files (e.g., `locales/en.json` and `locales/fr.json` — English plus one other language of your choice). Visiting `/feedback?lang=fr` shows the translated page; the default is English, and an unsupported `lang` value must fall back to English rather than crash. Display today's date on the page formatted for the active locale (e.g., using `Intl.DateTimeFormat`).
+*(Note: If port `3306` is occupied by another service on your machine, map `-p 3307:3306` and set `DB_PORT=3307` in your `.env` file.)*
 
 ---
 
-## Submission Requirements
+## 3. Environment & Database Initialization
 
-- Git repository (with meaningful commit history — a single "final commit" will be questioned) containing:
-  - `schema-diagram` (image or PDF), `schema.sql`, and `seed.sql` (as specified in Part B)
-  - Application source, worker process, tests, locale files
-  - `README.md` with: setup steps, `.env.example`, and the short written justifications requested in Parts C, D, and E
-- The app must start with `npm install && npm start` (plus documented MySQL/Redis setup) and tests with `npm test`.
-- A short **viva/demo (10 minutes)** walkthrough.
+### Step 1: Configure Environment Variables
+Copy the `.env.example` template:
+```bash
+cp .env.example .env
+```
+Ensure `.env` matches your environment credentials (e.g. `DB_PORT=3306` or `3307`).
 
-**Automatic penalties:** SQL injection vector anywhere in the app (−15), secrets committed to the repo (−5), app does not start per README instructions (−10), work the student cannot explain in the video (or at a follow-up viva if called) | Academic integrity referral; affected criteria re-scored at Developing or below |
+### Step 2: Install Node Dependencies
+```bash
+npm install
+```
+
+### Step 3: Load Database Schema & Seed Data
+Execute the DDL schema and seed scripts against MySQL:
+```bash
+# Load schema (creates database medibook and tables)
+mysql -u root -pchangeme -h 127.0.0.1 -P 3306 < database/schema.sql
+
+# Load seed data (4 patients, 4 doctors, 15 appointments, refund)
+mysql -u root -pchangeme -h 127.0.0.1 -P 3306 medibook < database/seed.sql
+```
+
+---
+
+## 4. Running the Application & Services
+
+### Web API Server
+Start the Express REST API server:
+```bash
+npm start
+# or for development mode:
+npm run dev
+```
+The server listens on `http://localhost:3000`. Test liveness at `http://localhost:3000/health`.
+
+### Background Worker Process
+Start the independent Redis worker process in a separate terminal:
+```bash
+npm run worker
+```
+The worker processes cancellation promotions from `jobs:slot-freed` and notification confirmations from `jobs:notifications`.
+
+### Running Unit Tests
+Execute the pure unit test suite (runs in Jest with zero database or Redis dependencies):
+```bash
+npm test
+```
+
+---
+
+## 5. API Reference Table
+
+All endpoints use plural resource naming and adhere strictly to standard HTTP status codes:
+
+| Method | Endpoint | Description | Success | Errors |
+|---|---|---|---|---|
+| `GET` | `/health` | Liveness health check | `200 OK` | - |
+| `POST` | `/api/patients` | Register a new patient | `201 Created` | `400`, `409` (duplicate email) |
+| `GET` | `/api/patients` | List all registered patients | `200 OK` | - |
+| `GET` | `/api/patients/:id` | Get patient details by ID | `200 OK` | `400`, `404` |
+| `PUT` | `/api/patients/:id` | Update patient record | `200 OK` | `400`, `404`, `409` |
+| `DELETE` | `/api/patients/:id` | Delete patient (blocked if appointments exist) | `200 OK` | `400`, `404`, `409` |
+| `POST` | `/api/doctors` | Register a new doctor | `201 Created` | `400` |
+| `GET` | `/api/doctors` | List all doctors | `200 OK` | - |
+| `GET` | `/api/doctors/:id` | Get doctor details by ID | `200 OK` | `400`, `404` |
+| `PUT` | `/api/doctors/:id` | Update doctor record | `200 OK` | `400`, `404` |
+| `DELETE` | `/api/doctors/:id` | Delete doctor (blocked if appointments exist) | `200 OK` | `400`, `404`, `409` |
+| `POST` | `/api/appointments` | Book appointment slot | `201 Created` | `400`, `404`, `409` (slot taken), `422` (cap reached/off-hours) |
+| `DELETE` | `/api/appointments/:id` | Cancel appointment & calculate refund | `200 OK` | `400`, `404`, `409` (already cancelled) |
+| `POST` | `/api/appointments/waitlist` | Join Redis waitlist for doctor-date | `201 Created` | `400`, `404`, `422` |
+| `GET` | `/api/doctors/:id/stats` | Net revenue, upcoming count, 7-day CTE stats | `200 OK` | `400`, `404` |
+| `GET` | `/api/reports/doctors` | Clinic-wide doctor appointments & net revenue | `200 OK` | - |
+| `GET` | `/api/reports/busy-days` | Every (doctor, date) with > 80% capacity booked | `200 OK` | - |
+| `GET` | `/feedback?lang=en\|rw` | Course feedback page in English or Kinyarwanda | `200 OK` | - |
+
+---
+
+## 6. Design Decisions & Justifications
+
+### Part C — Booking, Concurrency, and Cancellation
+
+1. **Concurrency and Daily Cap Safety:**
+   - Checking daily appointment count in JavaScript before inserting introduces race conditions under concurrent requests where multiple requests both observe count = 11 and simultaneously insert, violating the 12-appointment cap.
+   - We serialize bookings per doctor by opening an explicit transaction and issuing `SELECT doctor_id FROM doctors WHERE doctor_id = ? FOR UPDATE`. This row lock ensures that concurrent booking requests for that doctor execute sequentially. The count query checks active `booked` rows and strictly enforces `DAILY_CAP = 12`.
+   - In addition, slot collisions are prevented at the database level by a stored generated column `active_slot` with `UNIQUE KEY uq_doctor_active_slot (doctor_id, active_slot)`.
+
+2. **Rebooking Cancelled Slots & Keeping History (`DELETE /api/appointments/:id`):**
+   - In REST semantics, `DELETE` signifies the removal or cancellation of a resource. However, clinic financial accounting and medical audits require that the historical record of the appointment and its corresponding refund never be expunged.
+   - The stored generated column `active_slot` is defined as:
+     `active_slot DATETIME GENERATED ALWAYS AS (IF(status = 'booked', appointment_datetime, NULL)) STORED`
+   - When an appointment is cancelled, its status updates to `'cancelled'`, which sets `active_slot` to `NULL`. Because MySQL allows multiple `NULL` values in a unique index, cancelled records never collide, instantly freeing the slot for another patient to rebook while preserving audit history.
+
+3. **Refund Boundary Policy:**
+   - The assignment specifies refund tiers as: `> 48h` (100%), `24h - 48h` (50%), and `< 24h` (0%).
+   - We explicitly treat both the 24-hour and 48-hour marks as inclusive of the 50% tier (`24 <= noticeHours <= 48 -> 50%`).
+   - Notice calculation is performed by a pure function `calculateRefund(appointmentDatetime, now, fee)` using integer cents to eliminate floating-point rounding discrepancies.
+
+4. **HTTP Status Code Mapping:**
+   - `400 Bad Request`: Malformed or syntactically invalid input (invalid types, non-numeric IDs, invalid email format, invalid date string).
+   - `404 Not Found`: Target patient, doctor, or appointment ID does not exist in the database.
+   - `409 Conflict`: Request conflicts with current database state (slot already booked, duplicate patient email, appointment already cancelled, or deleting an entity with existing appointment history). On a booked slot, the response includes `waitlistAvailable: true`.
+   - `422 Unprocessable Entity`: Well-formed request violates domain business rules (e.g. attempting to book in the past, outside operating hours 09:00–16:30, or when the doctor has reached the 12-slot daily cap). The response offers `waitlistAvailable: true`.
+   - `201 Created`: Resource successfully created.
+   - `200 OK`: Successful retrieval, update, or cancellation.
+
+### Part D — Non-Blocking Audit Logging
+
+- Every booking, cancellation, waitlist promotion, and notification event is logged to `logs/audit.log` as a single line containing a valid JSON object (`{ event, appointmentId, timestamp, details }`).
+- Implemented using Node's non-blocking `fs.promises.appendFile`. No synchronous methods (`*Sync`) are ever used inside request handlers.
+- The logger automatically ensures `logs/` directory creation on first invocation.
+- All logging operations are wrapped in safe error handling: **a logging failure (e.g. disk full or unwritable permissions) is caught and logged to stderr but never crashes or fails the user's HTTP request**.
+
+### Part E — Redis Queues, Worker Architecture, and Promotion Safety
+
+1. **Plain Redis Lists vs. Frameworks:**
+   - We utilize `ioredis` with native Redis commands (`RPUSH`, `LMOVE`, `LREM`, `LPUSH`, `BRPOP`) instead of heavy abstractions like BullMQ. Native lists offer complete transparency, zero hidden Redis keys, and easy explainability.
+
+2. **Waitlist Segregation:**
+   - Waitlists are keyed by doctor and date: `waitlist:{doctorId}:{date}`. When a slot is freed, only patients waiting for that specific doctor on that specific date are examined.
+
+3. **Promotion Safety with `LMOVE`:**
+   - To guarantee that a patient is never lost between the queue and the database, the worker uses `LMOVE waitlist:{doctorId}:{date} waitlist:processing LEFT RIGHT`.
+   - This atomically transfers the candidate from the waitlist into a processing list.
+   - If `createBooking` succeeds, the entry is removed from processing via `LREM`.
+   - If `createBooking` fails (e.g. doctor daily cap hit or race condition), attempts are incremented:
+     - If `attempts < 3`: the patient is re-queued to the **front** of the waitlist (`LPUSH`) and removed from processing.
+     - If `attempts >= 3`: the poison entry is logged as `promotion_dropped` and purged from processing.
+   - This guarantees that a candidate is always present in at least one Redis list during the transition.
+
+4. **Separate Worker Process:**
+   - The worker runs as a dedicated process (`npm run worker`), completely decoupled from the Express web server.
+   - The web server signals cancellations by pushing to `jobs:slot-freed`. If Redis is temporarily down, the database transaction is unaffected.
+
+---
+
+## 7. Internationalization (i18n & l10n) — Course Feedback Page
+
+- Located at `GET /feedback`.
+- Supports English (`en`) and Kinyarwanda (`rw`) via query parameter `?lang=en|rw`.
+- Any missing or unsupported `lang` parameter (e.g. `?lang=fr` or `?lang=unknown`) gracefully falls back to English (`en`) without errors.
+- Today's date is dynamically localized using `Intl.DateTimeFormat(lang, { dateStyle: 'full' })` (e.g., rendering `2026 Ugushyingo 23, Kuwa mbere` in Kinyarwanda).
+- All visible UI strings are loaded asynchronously from `locales/en.json` and `locales/rw.json`. No user-facing text is hardcoded in the HTML template.
+
+---
+
+## 8. Known Limitations
+
+- **No Authentication / Authorization Layer**: In accordance with the project specification scope, endpoints do not require bearer tokens or user logins. Any client possessing an `appointment_id` may cancel the appointment. In production, this would be protected by JWT-based role authentication (e.g. patient self-service or clinic staff role).
