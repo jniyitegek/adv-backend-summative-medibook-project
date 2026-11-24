@@ -1,5 +1,9 @@
 # MediBook — Clinic Appointment System Backend
 
+## 0. WALKTHROUGH VIDEO (8 minutes)
+
+[![Watch the demo video](https://img.youtube.com/vi/-x9BSPaIACc/maxresdefault.jpg)](https://www.youtube.com/watch?v=-x9BSPaIACc)
+
 A production-ready clinic appointment booking backend engineered with **Node.js**, **Express.js**, **MySQL 8.0+** (parameterized queries only, no ORM), and **Redis** (native list queues).
 
 ---
